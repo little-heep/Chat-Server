@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>客户端管理 - TCP服务器管理系统</title>
+    <style>
+        .nav {
+            background: linear-gradient(45deg, #FFB6C1, #87CEEB);
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            animation: navFadeIn 0.8s ease-out;
+        }
+        @keyframes navFadeIn {
+            from { opacity: 0; transform: translateY(-100%); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .nav a, .logout-btn {
+            color: white;
+            text-decoration: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .nav a:hover, .logout-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+        }
+        .nav a:active, .logout-btn:active {
+            transform: translateY(0);
+        }
+        .nav a:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .logout-btn {
+            background-color: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        .logout-btn:hover {
+            background-color: rgba(255,255,255,0.3);
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #FFFFFF;
+        }
+        .nav {
+            background: linear-gradient(45deg, #FFB6C1, #FFE4B5);
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .nav a {
+            color: white;
+            text-decoration: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            transition: background 0.3s ease;
+        }
+        .nav a:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            animation: fadeIn 0.6s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        h1 {
+            color: #FF69B4;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #FFE4E1;
+        }
+        th {
+            background-color: #FFB6C1;
+            color: white;
+        }
+        tr:hover {
+            background-color: #FFF0F5;
+        }
+        .actions {
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .kick-btn {
+            background-color: #FF69B4;
+            color: white;
+        }
+        .kick-btn:hover {
+            background-color: #FF1493;
+        }
+        .message-btn {
+            background-color: #87CEEB;
+            color: white;
+        }
+        .message-btn:hover {
+            background-color: #4169E1;
+        }
+        .refresh-btn {
+            background-color: #FFB6C1;
+            color: white;
+            margin-bottom: 20px;
+        }
+        .refresh-btn:hover {
+            background-color: #FF69B4;
+        }
+        #messageModal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+            z-index: 1000;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+        #messageModal.show {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+        }
+        #messageModal textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #FFB6C1;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            resize: vertical;
+        }
+        #messageModal button {
+            margin-right: 10px;
+        }
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .overlay.show {
+            opacity: 1;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 20px;
+            border-radius: 8px;
+            width: 80%;
+            max-width: 500px;
+        }
+        .close {
+            float: right;
+            cursor: pointer;
+            font-size: 24px;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin: 10px 0;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="/home.html">返回首页</a>
+        <!--
+        <button class="logout-btn" onclick="logout()">退出登录</button>
+    -->
+    </div>
+
+    <div class="container">
+        <h1>TCP服务器管理界面</h1>
+        <div id="serverInfo" style="background-color: #e9ecef; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+            <strong>服务器地址：</strong><span id="serverAddress">正在获取...</span>
+        </div>
+        <button class="refresh-btn" onclick="refreshClients()">刷新客户端列表</button>
+        <table>
+            <thead>
+                <tr>
+                    <th>客户端ID</th>
+                    <th>IP地址</th>
+                    <th>连接时间</th>
+                    <th>最后活动时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="clientList"></tbody>
+        </table>
+    </div>
+
+    <div id="messageModal">
+        <h2>发送消息</h2>
+        <textarea id="messageContent" rows="4" placeholder="输入要发送的消息..."></textarea>
+        <button onclick="sendMessage()" class="message-btn">发送</button>
+        <button onclick="closeMessageModal()" style="background-color: #999;">取消</button>
+    </div>
+    <div class="overlay" onclick="closeMessageModal()"></div>
+
+    <script>
+        let selectedClientId = '';
+
+        function refreshClients() {
+            const tbody = document.getElementById('clientList');
+            const refreshBtn = document.querySelector('.refresh-btn');
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = '正在刷新...';
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">正在加载数据...</td></tr>';
+
+            fetch('/api/clients')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(clients => {
+                    tbody.innerHTML = '';
+                    if (clients.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">暂无连接的客户端</td></tr>';
+                    } else {
+                        clients.forEach(client => {
+                            const row = document.createElement('tr');
+                            row.innerHTML = `
+                                <td>${client.id}</td>
+                                <td>${client.ip}</td>
+                                <td>${new Date(client.connect_time).toLocaleString()}</td>
+                                <td>${new Date(client.last_active).toLocaleString()}</td>
+                                <td class="actions">
+                                    <button class="kick-btn" onclick="kickClient('${client.id}')">踢出</button>
+                                    <button class="message-btn" onclick="openMessageModal('${client.id}')">发送消息</button>
+                                </td>
+                            `;
+                            tbody.appendChild(row);
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: red;">获取数据失败，请稍后重试</td></tr>';
+                })
+                .finally(() => {
+                    refreshBtn.disabled = false;
+                    refreshBtn.textContent = '刷新客户端列表';
+                });
+        }
+
+        function kickClient(clientId) {
+            if (confirm(`确定要踢出客户端 ${clientId} 吗？`)) {
+                fetch(`/api/clients/${clientId}/kick`, { method: 'POST' })
+                    .then(response => response.text())
+                    .then(result => {
+                        alert(result);
+                        refreshClients();
+                    })
+                    .catch(error => console.error('Error:', error));
+            }
+        }
+
+        function openMessageModal(clientId) {
+            selectedClientId = clientId;
+            document.getElementById('messageModal').style.display = 'block';
+            document.querySelector('.overlay').style.display = 'block';
+        }
+
+        function closeMessageModal() {
+            document.getElementById('messageModal').style.display = 'none';
+            document.querySelector('.overlay').style.display = 'none';
+            document.getElementById('messageContent').value = '';
+        }
+
+        function sendMessage() {
+            const content = document.getElementById('messageContent').value;
+            if (!content) {
+                alert('请输入消息内容');
+                return;
+            }
+
+            fetch(`/api/clients/${selectedClientId}/message`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ content: content })
+            })
+                .then(response => response.text())
+                .then(result => {
+                    alert(result);
+                    closeMessageModal();
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        function updateServerInfo() {
+            const serverAddressElement = document.getElementById('serverAddress');
+            fetch('/api/server-info')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(info => {
+                    serverAddressElement.textContent = `${info.ip}:${info.port}`;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    serverAddressElement.textContent = '获取服务器信息失败';
+                    serverAddressElement.style.color = 'red';
+                });
+        }
+
+        // 页面加载时获取服务器信息和客户端列表
+        updateServerInfo();
+        refreshClients();
+        // 每5秒自动刷新一次
+        setInterval(refreshClients, 5000);
+        setInterval(updateServerInfo, 5000);
+    </script>
+</body>
+</html>

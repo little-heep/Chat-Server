@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>登录 - TCP服务器管理系统</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #FFB6C1;
+            font-family: Arial, sans-serif;
+        }
+        .login-container {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+            width: 320px;
+            animation: fadeIn 0.6s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        h1 {
+            color: #FF69B4;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 24px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #666;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #FFB6C1;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            transform-origin: left;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #FF69B4;
+            transform: scale(1.02);
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #FF69B4;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        button:hover {
+            background: #FF1493;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 105, 180, 0.3);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        button::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            width: 100px;
+            height: 100px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            opacity: 0;
+            transition: all 0.5s ease;
+        }
+        button:active::after {
+            transform: translate(-50%, -50%) scale(3);
+            opacity: 0;
+            transition: 0s;
+        }
+        .error-message {
+            color: #FF4444;
+            text-align: center;
+            margin-top: 10px;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: all 0.3s ease;
+        }
+        .error-message.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h1>TCP服务器管理系统</h1>
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">用户名</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            <div class="form-group">
+                <label for="password">密码</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit">登录</button>
+            <div id="errorMessage" class="error-message"></div>
+        </form>
+    </div>
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            fetch('/api/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    username: username,
+                    password: password
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        throw new Error('用户名或密码错误');
+                    } else if (response.status === 405) {
+                        throw new Error('请求方法不允许');
+                    } else if (response.status === 400) {
+                        throw new Error('无效的请求格式');
+                    } else {
+                        throw new Error('服务器错误，请稍后重试');
+                    }
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === 'success') {
+                    window.location.href = 'home.html';
+                } else {
+                    throw new Error(data.error || '登录失败');
+                }
+            })
+            .catch(error => {
+                const errorMessage = document.getElementById('errorMessage');
+                errorMessage.textContent = error.message || '网络连接错误，请检查网络后重试';
+                errorMessage.style.display = 'block';
+                errorMessage.classList.add('show');
+            });
+        });
+        // 检查是否已登录
+        const cookies = document.cookie.split(';');
+        for (let cookie of cookies) {
+            cookie = cookie.trim();
+            if (cookie.startsWith('sessionID=')) {
+                // 如果存在sessionID，说明已登录，跳转到主页
+                window.location.href = 'home.html';
+                break;
+            }
+        }
+    </script>
+</body>
+</html>
