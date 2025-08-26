@@ -187,36 +187,96 @@ func HandleConnection(conn net.Conn) {
 	}
 
 	for _, chat := range chats {
-		chatMsg := user.ChatMessage{
-			Type:    "message",
-			SendID:  chat.Sendid,
-			ReceiveID: chat.Reciveid,
-			Content: chat.Content,
-			SendTime: chat.SendTime.String(),
-		}
-		if strings.HasPrefix(chatMsg.Content, "file:") {
-			filekey := strings.TrimPrefix(chatMsg.Content, "file:")
-			if err := checkPendingFiles(client,filekey); err != nil {
+		// 处理不同类型的暂存消息
+		if strings.HasPrefix(chat.Content, "file:") {
+			// 处理文件消息
+			filekey := strings.TrimPrefix(chat.Content, "file:")
+			if err := checkPendingFiles(client, filekey); err != nil {
 				log.Printf("发送待接收文件失败 %s: %v", client.ID, err)
 			}
-			continue // 跳过文件消息
-		}
-		msgBytes, err := json.Marshal(chatMsg)
-		if err!= nil {
-			log.Printf("序列化消息失败 %s: %v", client.ID, err)
-			continue
-		}
-		if _, err := client.Conn.Write(append(msgBytes, '\n')); err!= nil {
-			log.Printf("发送消息失败 %s: %v", client.ID, err)
-			continue
+		} else if strings.HasPrefix(chat.Content, "addfriend_request:") {
+			// 处理好友请求
+			parts := strings.Split(chat.Content, ":")
+			if len(parts) >= 3 {
+				senderID := parts[1]
+				senderName := parts[2]
+				
+				// 创建好友请求消息
+				addFriendReq := map[string]interface{}{
+					"type":    "addfriend_request",
+					"addid":   senderID,
+					"addname": senderName,
+					"status":  1,
+					"online":  true,
+				}
+				
+				// 发送好友请求
+				reqBytes, err := json.Marshal(addFriendReq)
+				if err != nil {
+					log.Printf("序列化好友请求失败 %s: %v", client.ID, err)
+					continue
+				}
+				
+				if _, err := client.Conn.Write(append(reqBytes, '\n')); err != nil {
+					log.Printf("发送好友请求失败 %s: %v", client.ID, err)
+					continue
+				}
+			}
+		} else if strings.HasPrefix(chat.Content, "friend_accepted:") {
+			// 处理好友接受通知
+			parts := strings.Split(chat.Content, ":")
+			if len(parts) >= 3 {
+				senderID := parts[1]
+				senderName := parts[2]
+				
+				// 创建好友接受通知
+				acceptNotice := map[string]interface{}{
+					"type":     "friend_accepted",
+					"userid":   senderID,
+					"username": senderName,
+					"status":   1,
+					"online":   true,
+				}
+				
+				// 发送好友接受通知
+				noticeBytes, err := json.Marshal(acceptNotice)
+				if err != nil {
+					log.Printf("序列化好友接受通知失败 %s: %v", client.ID, err)
+					continue
+				}
+				
+				if _, err := client.Conn.Write(append(noticeBytes, '\n')); err != nil {
+					log.Printf("发送好友接受通知失败 %s: %v", client.ID, err)
+					continue
+				}
+			}
+		} else {
+			// 处理普通消息
+			chatMsg := user.ChatMessage{
+				Type:      "message",
+				SendID:    chat.Sendid,
+				ReceiveID: chat.Reciveid,
+				Content:   chat.Content,
+				SendTime:  chat.SendTime.String(),
+			}
+			
+			msgBytes, err := json.Marshal(chatMsg)
+			if err != nil {
+				log.Printf("序列化消息失败 %s: %v", client.ID, err)
+				continue
+			}
+			
+			if _, err := client.Conn.Write(append(msgBytes, '\n')); err != nil {
+				log.Printf("发送消息失败 %s: %v", client.ID, err)
+				continue
+			}
 		}
 
 		// 从数据库中删除已发送的消息
-		if err := databasetool.DeleteUnsendChat(db, chat.Logid); err!= nil {
+		if err := databasetool.DeleteUnsendChat(db, chat.Logid); err != nil {
 			log.Printf("删除已发送消息失败 %s: %v", client.ID, err)
 			continue
 		}
-
 	}
 
 	// 4. 进入消息处理循环
@@ -404,6 +464,10 @@ func handleMessage(client *user.Client, messageData []byte) error {
 		return handleChangePassword(client, []byte(messageStr))
 	case "changename":
 		return handleChangeName(client, []byte(messageStr))
+	case  "addfriend":
+		return handleAddFriend(client, []byte(messageStr))
+	case "acceptfriend":
+		return handleAcceptFriend(client, []byte(messageStr))
 	default:
 		return fmt.Errorf("未知消息类型: %s", msgType)
 	}
@@ -411,6 +475,312 @@ func handleMessage(client *user.Client, messageData []byte) error {
 	return nil
 }
 
+func handleAcceptFriend(client *user.Client, messageData []byte) error {
+    response := map[string]interface{}{
+        "type":    "acceptfriend_response",
+        "status":  "success",
+        "userid":  client.ID,
+		"username": nil,
+		"userstatus": 1,
+		"online": true,
+    }
+
+    // 定义好友请求结构
+    type AcceptFriendRequest struct {
+        Type     string `json:"type"`
+        AddName  string `json:"addname"`
+    }
+	// 解析请求
+    var acceptFriendRequest AcceptFriendRequest
+    if err := json.Unmarshal(messageData, &acceptFriendRequest); err != nil {
+		return fmt.Errorf("解析好友请求的回应失败: %v", err)
+	}
+
+	// 将发送者ID转换为整数
+    senderID, err := strconv.Atoi(client.ID)
+    if err != nil {
+        return fmt.Errorf("发送者ID转换失败: %v", err)
+    }
+	// 获取发送者用户信息
+    senderUser, err := databasetool.FindUserById(db, senderID)
+    if err != nil {
+        return fmt.Errorf("查询发送者用户失败: %v", err)
+    }
+	response["username"]=senderUser.Name
+	// 获取接收者用户信息
+    receiverUser, err := databasetool.FindUserByName(db, acceptFriendRequest.AddName)
+	if err != nil {
+		return fmt.Errorf("查询接收者用户失败: %v", err)
+	}
+	// 接收者ID已经是整数类型(uint)，直接转换为int
+    receiverID := int(receiverUser.ID)
+	// 添加好友
+	if err := databasetool.BeFriend(db,senderID,receiverID); err != nil {
+		return fmt.Errorf("添加好友失败: %v", err)
+	}
+	// 检查好友是否在线
+    friendIDStr := fmt.Sprintf("%d", receiverID)
+    user.Manager.Mutex.Lock()
+    friendClient, online := user.Manager.Clients[friendIDStr]
+    user.Manager.Mutex.Unlock()
+	
+	responseBytes, err := json.Marshal(response)
+		if err != nil {
+			return fmt.Errorf("序列化响应失败: %v", err)
+		}
+	if online {
+		// 发送响应		
+		if _, err := friendClient.Conn.Write(append(responseBytes, '\n')); err != nil {
+			return fmt.Errorf("发送响应失败: %v", err)
+		}
+
+		return nil
+	} else {
+		// 好友不在线，暂存消息
+        content := fmt.Sprintf("friend_accepted:%s:%s", client.ID, senderUser.Name)
+        if err := databasetool.CreateUnsendChat(db, client.ID, friendIDStr, content); err != nil {
+            return fmt.Errorf("暂存好友接受通知失败: %v", err)
+        }
+        
+        // 发送响应给当前用户
+        if _, err := client.Conn.Write(append(responseBytes, '\n')); err != nil {
+            return fmt.Errorf("发送响应失败: %v", err)
+        }
+	}
+	
+	return nil
+}
+
+func handleAddFriend(client *user.Client, messageData []byte) error {
+    response := map[string]interface{}{
+        "type":    "addfriend_response",
+        "status":  "success",
+        "message": "添加好友请求已发送",
+    }
+
+    // 定义好友请求结构
+    type AddFriendRequest struct {
+        Type     string `json:"type"`
+        AddName  string `json:"addname"`
+        AddID    interface{} `json:"addid"` // 可能是null或字符串
+    }
+
+    // 解析请求数据
+    var req AddFriendRequest
+    if err := json.Unmarshal(messageData, &req); err != nil {
+        response["status"] = "fail"
+        response["message"] = "请求格式错误"
+        
+        // 发送响应
+        responseBytes, err := json.Marshal(response)
+        if err != nil {
+            return fmt.Errorf("序列化响应失败: %v", err)
+        }
+        
+        if _, err := client.Conn.Write(append(responseBytes, '\n')); err != nil {
+            return fmt.Errorf("发送响应失败: %v", err)
+        }
+        return fmt.Errorf("解析好友请求失败: %v", err)
+    }
+
+    // 将发送者ID转换为整数
+    senderID, err := strconv.Atoi(client.ID)
+    if err != nil {
+        response["status"] = "fail"
+        response["message"] = "服务器错误"
+        
+        // 发送响应
+        responseBytes, err := json.Marshal(response)
+        if err != nil {
+            return fmt.Errorf("序列化响应失败: %v", err)
+        }
+        
+        if _, err := client.Conn.Write(append(responseBytes, '\n')); err != nil {
+            return fmt.Errorf("发送响应失败: %v", err)
+        }
+        return fmt.Errorf("发送者ID转换失败: %v", err)
+    }
+
+    // 获取发送者用户信息
+    senderUser, err := databasetool.FindUserById(db, senderID)
+    if err != nil {
+        response["status"] = "fail"
+        response["message"] = "服务器错误"
+        
+        // 发送响应
+        responseBytes, err := json.Marshal(response)
+        if err != nil {
+            return fmt.Errorf("序列化响应失败: %v", err)
+        }
+        
+        if _, err := client.Conn.Write(append(responseBytes, '\n')); err != nil {
+            return fmt.Errorf("发送响应失败: %v", err)
+        }
+        return fmt.Errorf("查询发送者用户失败: %v", err)
+    }
+
+    var friendUser *databasetool.User
+    var friendID int
+
+    // 根据AddID或AddName查找好友
+    // 检查AddID是否为0、nil或其他无效值
+    useNameQuery := false
+    
+    // 判断是否应该使用名称查询
+    switch v := req.AddID.(type) {
+    case float64:
+        // JSON中的数字会被解析为float64
+        if v == 0 {
+            useNameQuery = true
+        } else {
+            friendID = int(v)
+        }
+    case int:
+        if v == 0 {
+            useNameQuery = true
+        } else {
+            friendID = v
+        }
+    case string:
+        if v == "0" || v == "" {
+            useNameQuery = true
+        } else {
+            var err error
+            friendID, err = strconv.Atoi(v)
+            if err != nil {
+                useNameQuery = true
+            }
+        }
+    default:
+        // nil或其他类型，使用名称查询
+        useNameQuery = true
+    }
+    
+    if useNameQuery {
+        // 根据名称查询
+        friendUser, err = databasetool.FindUserByName(db, req.AddName)
+        if err != nil {
+            response["status"] = "fail"
+            response["message"] = "找不到用户名为 " + req.AddName + " 的用户"
+            
+            // 发送响应
+            responseBytes, err := json.Marshal(response)
+            if err != nil {
+                return fmt.Errorf("序列化响应失败: %v", err)
+            }
+            
+            if _, err := client.Conn.Write(append(responseBytes, '\n')); err != nil {
+                return fmt.Errorf("发送响应失败: %v", err)
+            }
+            return fmt.Errorf("根据名称查询用户失败: %v", err)
+        }
+        friendID = int(friendUser.ID)
+    } else {
+        // 根据ID查询
+        friendUser, err = databasetool.FindUserById(db, friendID)
+        if err != nil {
+            response["status"] = "fail"
+            response["message"] = "该用户不存在"
+            
+            // 发送响应
+            responseBytes, err := json.Marshal(response)
+            if err != nil {
+                return fmt.Errorf("序列化响应失败: %v", err)
+            }
+            
+            if _, err := client.Conn.Write(append(responseBytes, '\n')); err != nil {
+                return fmt.Errorf("发送响应失败: %v", err)
+            }
+            return fmt.Errorf("查询好友用户失败: %v", err)
+        }
+    }
+
+    // 创建好友请求消息
+    addFriendReq := map[string]interface{}{
+        "type":    "addfriend_request",
+        "addid":   client.ID,
+        "addname": senderUser.Name,
+		"status":  1,
+		"online":  true,
+    }
+    
+    // 序列化好友请求消息
+    reqBytes, err := json.Marshal(addFriendReq)
+    if err != nil {
+        response["status"] = "fail"
+        response["message"] = "服务器错误"
+        
+        // 发送响应
+        responseBytes, err := json.Marshal(response)
+        if err != nil {
+            return fmt.Errorf("序列化响应失败: %v", err)
+        }
+        
+        if _, err := client.Conn.Write(append(responseBytes, '\n')); err != nil {
+            return fmt.Errorf("发送响应失败: %v", err)
+        }
+        return fmt.Errorf("序列化好友请求失败: %v", err)
+    }
+    
+    // 检查好友是否在线
+    friendIDStr := fmt.Sprintf("%d", friendID)
+    user.Manager.Mutex.Lock()
+    friendClient, online := user.Manager.Clients[friendIDStr]
+    user.Manager.Mutex.Unlock()
+    
+    if online {
+        // 好友在线，直接发送请求
+        if _, err := friendClient.Conn.Write(append(reqBytes, '\n')); err != nil {
+            response["status"] = "fail"
+            response["message"] = "发送好友请求失败"
+            
+            // 发送响应
+            responseBytes, err := json.Marshal(response)
+            if err != nil {
+                return fmt.Errorf("序列化响应失败: %v", err)
+            }
+            
+            if _, err := client.Conn.Write(append(responseBytes, '\n')); err != nil {
+                return fmt.Errorf("发送响应失败: %v", err)
+            }
+            return fmt.Errorf("发送好友请求失败: %v", err)
+        }
+    } else {
+        // 好友不在线，暂存消息
+        content := fmt.Sprintf("addfriend_request:%s:%s", client.ID, senderUser.Name)
+        if err := databasetool.CreateUnsendChat(db, client.ID, friendIDStr, content); err != nil {
+            response["status"] = "fail"
+            response["message"] = "暂存好友请求失败"
+            
+            // 发送响应
+            responseBytes, err := json.Marshal(response)
+            if err != nil {
+                return fmt.Errorf("序列化响应失败: %v", err)
+            }
+            
+            if _, err := client.Conn.Write(append(responseBytes, '\n')); err != nil {
+                return fmt.Errorf("发送响应失败: %v", err)
+            }
+            return fmt.Errorf("暂存好友请求失败: %v", err)
+        }
+        
+        log.Printf("用户 %s 的好友请求已暂存，等待用户 %s 上线", client.ID, friendIDStr)
+    }
+    
+    // 发送成功响应
+    responseBytes, err := json.Marshal(response)
+    if err != nil {
+        return fmt.Errorf("序列化响应失败: %v", err)
+    }
+    
+    if _, err := client.Conn.Write(append(responseBytes, '\n')); err != nil {
+        return fmt.Errorf("发送响应失败: %v", err)
+    }
+    
+    log.Printf("用户 %s 发送好友请求给用户 %s", client.ID, friendIDStr)
+    return nil
+}
+		
 // handleChangePassword 处理修改密码请求
 func handleChangePassword(client *user.Client, messageData []byte) error {
     response := map[string]interface{}{

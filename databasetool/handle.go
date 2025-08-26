@@ -4,6 +4,7 @@ import (
     "gorm.io/gorm"
     "log"
 	"time"
+    "fmt"
 )
 
 func InitDB() *gorm.DB {
@@ -39,7 +40,7 @@ func RegisterUser(db *gorm.DB, name string, password string, ip string) error {
 //通过用户名查找用户
 func FindUserByName(db *gorm.DB, name string) (*User, error) {
     var user User
-    result := db.First(&user, "name = ?", name) // 通过唯一键查询
+    result := db.First(&user, "Name = ?", name) // 通过唯一键查询
     if result.Error != nil {
         return nil, result.Error
     }
@@ -94,6 +95,85 @@ func ChangePassword(db *gorm.DB, id int, password string) error {
 func ChangeName(db *gorm.DB, id int, name string) error {
    result := db.Model(&User{}).Where("Id =?", id).Update("Name", name)
    return result.Error 
+}
+
+//将两个用户变为好友
+// SetRelationBit 设置用户关系位
+// id: 用户ID
+// targetID: 目标用户ID
+// relation: 关系字节数组
+// relationValue: 关系值（0=无关系, 1=好友, 2=待确认, 3=拉黑）
+// 返回: 修改后的关系字节数组
+func SetRelationBit(data []byte, groupNum int, value int) ([]byte, error) {
+    // 创建数据的副本，避免修改原数组
+    result := make([]byte, len(data))
+    copy(result, data)
+    
+    // 检查参数有效性
+    if groupNum < 1 {
+        return nil, fmt.Errorf("group number must be at least 1")
+    }
+    
+    if value < 0 || value > 3 {
+        return nil, fmt.Errorf("value must be between 0 and 3")
+    }
+    
+    // 计算组号对应的字节位置（从右向左）
+    totalGroups := len(result) * 4 // 每个字节包含4个组
+    if groupNum > totalGroups {
+        return nil, fmt.Errorf("group number %d exceeds maximum available groups %d", groupNum, totalGroups)
+    }
+    
+    // 计算组在字节数组中的位置（从右向左）
+    byteIndex := len(result) - 1 - (groupNum-1)/4
+    if byteIndex < 0 || byteIndex >= len(result) {
+        return nil, fmt.Errorf("calculated byte index out of range")
+    }
+    
+    // 计算组在字节中的位置（从右向左，每2位一组）
+    bitPos := ((groupNum - 1) % 4) * 2
+    
+    // 清除原来的值（将对应的2位清零）
+    mask := ^(byte(3) << bitPos) // 创建掩码：将对应位置清零
+    result[byteIndex] &= mask
+    
+    // 设置新的值
+    result[byteIndex] |= byte(value) << bitPos
+    
+    return result, nil
+}
+
+// BeFriend 将两个用户设置为好友关系
+func BeFriend(db *gorm.DB, id1 int, id2 int) error {
+    // 获取用户1的信息
+    user1, err := FindUserById(db, id1)
+    if err != nil {
+        return fmt.Errorf("查询用户1失败: %v", err)
+    }
+    
+    // 获取用户2的信息
+    user2, err := FindUserById(db, id2)
+    if err != nil {
+        return fmt.Errorf("查询用户2失败: %v", err)
+    }
+    
+    // 修改用户1的关系字节，将用户2设置为好友
+    user1.Relation,_ = SetRelationBit(user1.Relation, id2, 1) // 1表示好友关系
+    
+    // 修改用户2的关系字节，将用户1设置为好友
+    user2.Relation,_ = SetRelationBit(user2.Relation, id1, 1) // 1表示好友关系
+    
+    // 更新用户1的关系到数据库
+    if err := UpdateRelation(db, id1, user1.Relation); err != nil {
+        return fmt.Errorf("更新用户1关系失败: %v", err)
+    }
+    
+    // 更新用户2的关系到数据库
+    if err := UpdateRelation(db, id2, user2.Relation); err != nil {
+        return fmt.Errorf("更新用户2关系失败: %v", err)
+    }
+    
+    return nil
 }
 
 //更新好友关系
