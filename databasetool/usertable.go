@@ -10,7 +10,7 @@ type User struct {
     Name         string `gorm:"column:Name;type:varchar(30);not null"` // 名称，长度为30，不允许为空
     Password     string `gorm:"column:Password;type:varchar(20);not null"` // 密码，长度为20，不允许为空
     Ip           string `gorm:"column:Ip;type:varchar(20);not null"` // IP地址，长度为20，不允许为空
-    Relation     []byte `gorm:"column:Relation;type:bit(64);not null"` // 关系，类型为bit(64)，不允许为空
+    Relation     []byte `gorm:"column:Relation;type:blob;not null"` // 关系，使用 BLOB 兼容 SQLite
     RegisterTime time.Time `gorm:"column:RegisterTime;type:datetime;not null"` // 注册时间，不允许为空
     LeaveTime    time.Time `gorm:"column:LeaveTime;type:datetime"` // 离开时间，允许为空
     Status       int   `gorm:"column:Status;type:int(1);not null"` // 状态，类型为bit(1)，不允许为空

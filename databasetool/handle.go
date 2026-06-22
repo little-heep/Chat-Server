@@ -1,6 +1,6 @@
 package databasetool
 import (
-    "gorm.io/driver/mysql"
+    "gorm.io/driver/sqlite"
     "gorm.io/gorm"
     "log"
 	"time"
@@ -8,8 +8,8 @@ import (
 )
 
 func InitDB() *gorm.DB {
-    dsn := "newuser:password@tcp(localhost:3306)/communication?charset=utf8mb4&parseTime=True&loc=Local"
-    db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+    dsn := "communication.db"
+    db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
     if err != nil {
         log.Fatal("failed to connect database")
     }
@@ -20,6 +20,10 @@ func InitDB() *gorm.DB {
         log.Fatal(err)
     }
     
+    if err := db.AutoMigrate(&User{}, &Unsendchat{}); err != nil {
+        log.Fatal(err)
+    }
+
     // 设置连接池参数
     sqlDB.SetMaxIdleConns(10)
     sqlDB.SetMaxOpenConns(100)
