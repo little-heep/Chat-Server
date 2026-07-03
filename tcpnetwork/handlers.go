@@ -1,17 +1,18 @@
 package tcpnetwork
+
 //http请求处理
 import (
-	"encoding/json"
-	"fmt"
-	"github.com/gorilla/mux"
-	"net/http"
-	"time"
+	"connection_server_linux/logincheck"
+	"connection_server_linux/user"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"log"
-	"connection_server_linux/user"
-	"connection_server_linux/logincheck"
-	
+	"net/http"
+	"time"
+
+	"github.com/gorilla/mux"
 )
 
 // 生成随机session ID
@@ -43,16 +44,16 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	if credentials.Username == "notlike" && credentials.Password == "serve678" {
 		// 生成session ID并创建会话
 		sessionID := GenerateSessionID()
-		logincheck.GlobalSessionManager.CreateSession(credentials.Username,sessionID)
+		logincheck.GlobalSessionManager.CreateSession(credentials.Username, sessionID)
 
 		// 设置session cookie
 		sessionCookie := http.Cookie{
-			Name: "sessionID",
-			Value: sessionID,
-			Path: "/",
+			Name:     "sessionID",
+			Value:    sessionID,
+			Path:     "/",
 			HttpOnly: true,
-			Secure: true,
-			Expires: time.Now().Add(24 * time.Hour),
+			Secure:   true,
+			Expires:  time.Now().Add(24 * time.Hour),
 		}
 		http.SetCookie(w, &sessionCookie)
 		log.Println("设置新cookie成功，cookie的value为：", sessionCookie.Value)
@@ -111,7 +112,7 @@ func SendMessageHandler(w http.ResponseWriter, r *http.Request) {
 
 	user.Manager.Mutex.RLock()
 	if client, exists := user.Manager.Clients[clientID]; exists {
-		_, err := client.Conn.Write([]byte(message.Content))
+		err := writeFramedBytes(client.Conn, []byte(message.Content))
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintf(w, "发送消息失败: %v", err)

@@ -35,12 +35,15 @@ func InitDB() *gorm.DB {
 }
 
 // 注册用户
-func RegisterUser(db *gorm.DB, name string, password string, ip string) error {
+func RegisterUser(db *gorm.DB, name string, password string, ip string) (uint, error) {
 	now := time.Now()
 	relationBytes := make([]byte, 8)
 	user := &User{Name: name, Password: password, Ip: ip, Relation: relationBytes, RegisterTime: now, Status: 1}
 	result := db.Create(user) // 通过数据的指针来创建
-	return result.Error
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return user.ID, nil
 }
 
 // 通过用户名查找用户
